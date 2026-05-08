@@ -243,7 +243,7 @@ object AttackTools {
         "file", "filename", "path", "dir", "folder", "include",
         "search", "q", "query", "keyword", "term",
         "type", "kind", "format", "mode", "action", "op", "cmd",
-        "sort", "order", "dir", "asc", "desc",
+        "sort", "order", "direction", "asc", "desc",
         "lang", "locale", "country", "region",
         "ref", "referer", "source", "from",
         "cache", "no_cache", "force",
