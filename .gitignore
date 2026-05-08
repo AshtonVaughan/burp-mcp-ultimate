@@ -34,6 +34,9 @@ local.properties
 # Bug-bounty research notes that landed here from other tooling
 findings/
 
+# Claude Code internal state (scheduled tasks, session locks, etc.)
+.claude/
+
 # Secrets (defense in depth — none should exist in this repo)
 .env
 .env.*
