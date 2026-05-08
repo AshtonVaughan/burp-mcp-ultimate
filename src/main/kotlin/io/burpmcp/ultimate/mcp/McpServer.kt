@@ -22,7 +22,12 @@ class McpServer(
 
     fun start() {
         val srv = MicroHttpServer.create(InetSocketAddress(cfg.host, cfg.port), 0)
-        srv.executor = Executors.newFixedThreadPool(8) { r ->
+        // Cached pool instead of fixed-8: many tool calls block on slow
+        // outbound Montoya HTTP for multi-second targets, and a small fixed
+        // pool starves the inbound accept queue when the agent fires
+        // parallel http_send_raw calls. Cached pool scales with load and
+        // reaps idle threads after 60s. Daemon threads so JVM exit is clean.
+        srv.executor = Executors.newCachedThreadPool { r ->
             Thread(r, "burp-mcp-http").apply { isDaemon = true }
         }
         srv.createContext("/mcp")     { exch -> handleMcp(exch) }

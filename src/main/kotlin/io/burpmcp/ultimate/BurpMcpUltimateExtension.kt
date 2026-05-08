@@ -53,6 +53,43 @@ class BurpMcpUltimateExtension : BurpExtension {
 
         val sessions = SessionRegistry(cfg.rateLimitCallsPer10s)
 
+        // Self-diagnostic tool. Returns server thread state, handle count,
+        // event-channel buffer sizes, active SSE clients, JVM memory.
+        // The agent can use this to detect "server saturated" before the
+        // MCP client surfaces a misleading "Unable to connect" timeout.
+        registry.register(
+            name = "server_diagnostics",
+            description = "Diagnostics for the burp-mcp-ultimate server itself: bind, session count, " +
+                "handle count, event channel buffer sizes, SSE client count, JVM thread count + memory. " +
+                "Use when MCP calls are slow or returning unexpected timeouts to confirm whether the " +
+                "server is alive and how loaded its inbound thread pool is.",
+            inputSchema = io.burpmcp.ultimate.mcp.ToolRegistry.Schema.obj(properties = emptyMap()),
+        ) { _ ->
+            val rt = Runtime.getRuntime()
+            val threadGroup = Thread.currentThread().threadGroup
+            val activeThreadCount = threadGroup.activeCount()
+            mapOf(
+                "bind"               to "${cfg.host}:${cfg.port}",
+                "version"            to io.burpmcp.ultimate.mcp.SERVER_VERSION,
+                "tool_count"         to registry.size,
+                "resource_count"     to resources.size,
+                "prompt_count"       to prompts.size,
+                "handle_count"       to handles.size,
+                "session_count"      to sessions.size,
+                "sse_client_count"   to sseHub.activeCount,
+                "event_channels"     to events.listChannels(),
+                "intercept_mode"     to intercept.mode.name,
+                "intercept_pending"  to intercept.pendingCount(),
+                "jvm" to mapOf(
+                    "active_threads"      to activeThreadCount,
+                    "available_processors" to rt.availableProcessors(),
+                    "total_memory_mb"     to (rt.totalMemory() / 1024 / 1024),
+                    "free_memory_mb"      to (rt.freeMemory()  / 1024 / 1024),
+                    "max_memory_mb"       to (rt.maxMemory()   / 1024 / 1024),
+                ),
+            )
+        }
+
         val srv = McpServer(cfg, registry, resources, prompts, sseHub, sessions, api)
         srv.start()
         server = srv

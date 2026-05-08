@@ -175,9 +175,24 @@ class MicroHttpServer private constructor(private val address: InetSocketAddress
                 val client = try {
                     ss.accept()
                 } catch (_: IOException) {
+                    // ServerSocket closed (stop()) -> exit accept loop cleanly.
                     break
+                } catch (_: Throwable) {
+                    // Anything else (transient I/O, OOM in accept buffer alloc):
+                    // log via stderr and continue. We never let one bad accept
+                    // kill the whole listener.
+                    System.err.println("[burp-mcp] transient accept error; continuing")
+                    continue
                 }
-                executor.execute { handleConnection(client) }
+                try {
+                    executor.execute { handleConnection(client) }
+                } catch (_: Throwable) {
+                    // RejectedExecutionException (executor saturated/shut down)
+                    // or any other throwable from execute(): close the orphaned
+                    // socket and continue accepting. Better to drop one
+                    // connection than the whole listener.
+                    try { client.close() } catch (_: IOException) {}
+                }
             }
         }, "burp-mcp-accept").apply { isDaemon = true; start() }
     }
