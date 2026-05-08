@@ -52,6 +52,7 @@ Returned objects that are non-primitive get stored in a **handle store**; the ag
 | Hackvertor wrapper | `hackvertor_status`, `hackvertor_evaluate` |
 | Param Miner wrapper | `param_miner_status` (status + class discovery; UI-driven actions are unreachable from Montoya) |
 | Turbo Intruder wrapper | `turbo_intruder_status` (use `http_send_race` for most race-condition use cases) |
+| Agent-native attack | `param_miner_lite` (header/parameter probing with anomaly detection), `bypass_403` (path/header/method 403-bypass tricks), `cors_misconfig_probe` (Origin reflection + credentials checks) |
 | Plus | Proxy, Repeater, Intruder (incl. `intruder_send_template` with positions), Scanner, Collaborator, Sitemap, Scope, WebSockets (read+write), Organizer, Comparer, Decoder, Logger, Util/UtilExt, BurpSuite |
 
 (Full alphabetical list at `/mcp -> tools/list`.)

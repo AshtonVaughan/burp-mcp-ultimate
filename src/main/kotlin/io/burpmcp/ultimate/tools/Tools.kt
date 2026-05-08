@@ -57,4 +57,8 @@ fun registerAllTools(
     // Cross-extension bridge: discovery + classloader-aware reflection +
     // per-extension typed wrappers (Logger++, Hackvertor, Param Miner, Turbo Intruder).
     BridgeTools.register(reg, handles, ExtensionBridge(handles))
+
+    // Agent-native attack tools (no third-party extension required):
+    // param_miner_lite, bypass_403, cors_misconfig_probe.
+    AttackTools.register(reg, api)
 }
