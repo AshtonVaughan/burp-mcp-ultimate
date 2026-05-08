@@ -33,6 +33,8 @@ Three-layer Montoya coverage strategy:
 2. **Composite tools** (`CompositeTools.kt`) — JSON-spec wrappers for Montoya's many `with*` builder methods.
 3. **Reflection escape hatch** (`ReflectTools.kt` + `mcp/Reflect.kt`) — `montoya_invoke` / `montoya_invoke_static` / `montoya_inspect` dispatch any Java method by name with score-based overload picking (exact-class > assignable > primitive boxing). Registered last so richer first-class schemas show first in tool listings.
 
+Fourth layer (added later): **`bridge/ExtensionBridge.kt`** — cross-extension reflection bridge that walks running threads to discover *other* Burp extensions' ClassLoaders, then does classloader-aware reflection against them. Used by `BridgeTools.kt` (8 generic tools) + `ExtensionWrappers.kt` (typed wrappers for Logger++, Hackvertor, Param Miner, Turbo Intruder). See `docs/EXTENSION_BRIDGE.md` for the rationale, status table, and caveats. **Do not rely on third-party extensions' class names being stable** — KNOWN_EXTENSION_CLASSES is verified against publicly-released source as of build, but BApp Store updates can shift them.
+
 Cross-cutting collaborators (in `mcp/`):
 - **`HandleStore`** — opaque `h<n>` IDs for non-primitive Java objects (1h TTL, 5000 cap, time-based eviction). The agent passes `{"$handle": "h12"}` to chain Montoya calls across requests. **This is the central abstraction; nearly every tool either consumes or produces a handle.**
 - **`EventBus`** — converts Burp's handler-style APIs (HttpHandler, ProxyRequestHandler, ScanCheck, etc.) into a poll-based stream (`events_poll`) AND pushes via `SseHub` for live MCP notifications.

@@ -47,6 +47,11 @@ Returned objects that are non-primitive get stored in a **handle store**; the ag
 | Events | `events_subscribe`, `events_poll`, `events_unsubscribe`, `events_list_channels`, `events_list_subscriptions` |
 | Persistence | `notes_*`, `persist_set/get_int/bool/request/response/request_response`, `persist_keys`, `persist_delete` |
 | Reflection | `montoya_invoke`, `montoya_invoke_static`, `montoya_inspect`, `montoya_list_methods`, `montoya_list_methods_of_class` |
+| Extension Bridge | `bridge_list_extensions`, `bridge_inspect_class`, `bridge_invoke_static`, `bridge_invoke`, `bridge_construct`, `bridge_get_field`, `bridge_set_field`, `bridge_get_static_field`, `bridge_refresh` (cross-extension reflection - call into Logger++, Hackvertor, Param Miner, etc.) |
+| Logger++ wrapper | `loggerpp_status`, `loggerpp_get_entries`, `loggerpp_search` |
+| Hackvertor wrapper | `hackvertor_status`, `hackvertor_evaluate` |
+| Param Miner wrapper | `param_miner_status` (status + class discovery; UI-driven actions are unreachable from Montoya) |
+| Turbo Intruder wrapper | `turbo_intruder_status` (use `http_send_race` for most race-condition use cases) |
 | Plus | Proxy, Repeater, Intruder (incl. `intruder_send_template` with positions), Scanner, Collaborator, Sitemap, Scope, WebSockets (read+write), Organizer, Comparer, Decoder, Logger, Util/UtilExt, BurpSuite |
 
 (Full alphabetical list at `/mcp -> tools/list`.)

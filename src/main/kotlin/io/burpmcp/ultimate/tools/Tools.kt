@@ -1,6 +1,7 @@
 package io.burpmcp.ultimate.tools
 
 import burp.api.montoya.MontoyaApi
+import io.burpmcp.ultimate.bridge.ExtensionBridge
 import io.burpmcp.ultimate.mcp.EditorRegistry
 import io.burpmcp.ultimate.mcp.EventBus
 import io.burpmcp.ultimate.mcp.HandleStore
@@ -52,4 +53,8 @@ fun registerAllTools(
 
     // Reflection escape hatch last so other tools' richer schemas show first.
     ReflectTools.register(reg, api, handles)
+
+    // Cross-extension bridge: discovery + classloader-aware reflection +
+    // per-extension typed wrappers (Logger++, Hackvertor, Param Miner, Turbo Intruder).
+    BridgeTools.register(reg, handles, ExtensionBridge(handles))
 }
