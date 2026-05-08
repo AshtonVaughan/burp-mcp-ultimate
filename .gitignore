@@ -1,0 +1,42 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Kotlin
+.kotlin/
+
+# IntelliJ / Eclipse / VSCode
+.idea/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+.vscode/
+out/
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local / personal
+local.properties
+*.log
+*.bak
+*.tmp
+*.swp
+
+# Bug-bounty research notes that landed here from other tooling
+findings/
+
+# Secrets (defense in depth — none should exist in this repo)
+.env
+.env.*
+*.pem
+*.key
+*-secret*
